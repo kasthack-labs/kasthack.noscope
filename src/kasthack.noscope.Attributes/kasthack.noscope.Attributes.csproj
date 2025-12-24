@@ -1,15 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <TargetFrameworks></TargetFrameworks>
-    <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
     <Description>Attributes for kasthack.noscope source generator library</Description>
   </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="System.Linq.Expressions" Version="4.3.0" />
+    <PackageReference Include="System.Linq.Expressions" />
   </ItemGroup>
-
 </Project>

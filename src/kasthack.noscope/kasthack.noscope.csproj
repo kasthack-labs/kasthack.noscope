@@ -1,10 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <TargetFrameworks></TargetFrameworks>
-    <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
     <Description>NoScope - Source generator library for building scoped facades to help with extending and refactoring tightly coupled types</Description>
     
     <!-- This is a meta-package that pulls in all components -->
