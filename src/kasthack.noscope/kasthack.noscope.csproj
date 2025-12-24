@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFrameworks></TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <Description>NoScope - Source generator library for building scoped facades to help with extending and refactoring tightly coupled types</Description>
+    
+    <!-- This is a meta-package that pulls in all components -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
+    <NoPackageAnalysis>true</NoPackageAnalysis>
+    <NoBuild>false</NoBuild>
+    
+    <!-- Package metadata -->
+    <PackageId>kasthack.noscope</PackageId>
+    <PackageTags>source-generator;roslyn;refactoring;facade;scope;dependency-injection</PackageTags>
+  </PropertyGroup>
+
+  <!-- Reference to Attributes (runtime dependency) -->
+  <ItemGroup>
+    <ProjectReference Include="..\kasthack.noscope.Attributes\kasthack.noscope.Attributes.csproj" />
+  </ItemGroup>
+  
+  <!-- Reference to SourceGenerator (development/build-time only) -->
+  <ItemGroup>
+    <ProjectReference Include="..\kasthack.noscope.SourceGenerator\kasthack.noscope.SourceGenerator.csproj" 
+                      PrivateAssets="all" 
+                      ReferenceOutputAssembly="false" 
+                      OutputItemType="Analyzer" />
+  </ItemGroup>
+  
+  <!-- Reference to Analyzers (development/build-time only) -->
+  <ItemGroup>
+    <ProjectReference Include="..\kasthack.noscope.Analyzers\kasthack.noscope.Analyzers.csproj" 
+                      PrivateAssets="all" 
+                      ReferenceOutputAssembly="false" 
+                      OutputItemType="Analyzer" />
+  </ItemGroup>
+
+  <!-- Include analyzer DLLs in the package -->
+  <ItemGroup>
+    <None Include="..\kasthack.noscope.SourceGenerator\bin\$(Configuration)\netstandard2.0\kasthack.noscope.SourceGenerator.dll" 
+          Pack="true" 
+          PackagePath="analyzers/dotnet/cs" 
+          Visible="false" />
+    <None Include="..\kasthack.noscope.Analyzers\bin\$(Configuration)\netstandard2.0\kasthack.noscope.Analyzers.dll" 
+          Pack="true" 
+          PackagePath="analyzers/dotnet/cs" 
+          Visible="false" />
+  </ItemGroup>
+
+</Project>
