@@ -2,26 +2,45 @@
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
+
+    <!-- defensive code style settings -->
+    
+    <!-- 1. enforce nullables-->
     <Nullable>enable</Nullable>
-    <NoWarn>SA1633;SA1600;SA1601;CS1591;SA1300</NoWarn>
+
+    <!-- 2. enforce code style -->
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <StyleCopTreatErrorsAsWarnings>True</StyleCopTreatErrorsAsWarnings>
+
+    <!-- 3. enable analyzers: https://learn.microsoft.com/en-us/dotnet/fundamentals/code-analysis/overview?tabs=net-7#code-style-analysis -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisMode>All</AnalysisMode> <!-- https://learn.microsoft.com/en-us/dotnet/core/project-sdk/msbuild-props#analysismode -->
+    <CodeAnalysisTreatWarningsAsErrors>false</CodeAnalysisTreatWarningsAsErrors>
+
+    <!-- 4. all warnings are errors -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Enable docs: https://learn.microsoft.com/en-us/dotnet/core/project-sdk/msbuild-props#publishdocumentationfile -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PublishReferencesDocumentationFiles>true</PublishReferencesDocumentationFiles>
     <PublishDocumentationFile>true</PublishDocumentationFile>
     <PublishDocumentationFiles>true</PublishDocumentationFiles>
+
+    <!-- Nuget options -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
-    <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
     <IsPackable>true</IsPackable>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+
+    <!-- Package validation: https://learn.microsoft.com/en-us/dotnet/fundamentals/package-validation/overview -->
+    <EnablePackageValidation>true</EnablePackageValidation>
   </PropertyGroup>
   <ItemGroup>
-    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
-    <PackageReference Include="StyleCop.Analyzers">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
-    </PackageReference>
+    <!-- include readme in nuget package -->
+    <None Include="..\..\README.md" Pack="true" PackagePath="\"/>
+
+    <!-- Add stylecop and roslynator -->
+
     <PackageReference Include="Roslynator.Analyzers">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
@@ -30,7 +49,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Roslynator.Formatting.Analyzers">
+    <PackageReference Include="Roslynator.Formatting.Analyzers" >
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
