@@ -160,7 +160,7 @@ public class NoScopeGenerator : IIncrementalGenerator
                 MemberKind.Property,
                 prop.Name,
                 prop.Type.ToDisplayString(),
-                targetMemberName,
+                null!,
                 accessKind,
                 prop.GetMethod is not null,
                 prop.SetMethod is not null,
@@ -181,7 +181,7 @@ public class NoScopeGenerator : IIncrementalGenerator
             return new ScopeMemberInfo(MemberKind.Property, prop.Name, prop.Type.ToDisplayString(), targetMemberName, accessKind, prop.GetMethod is not null, prop.SetMethod is not null, ImmutableArray<ParameterInfo>.Empty, false, $"Member '{targetMemberName}' is not a property or field");
         }
 
-        var isPublic = targetMember.DeclaredAccessibility == Accessibility.Public;
+        var isPublic = targetMember?.DeclaredAccessibility == Accessibility.Public;
 
         return new ScopeMemberInfo(
             MemberKind.Property,
@@ -196,7 +196,7 @@ public class NoScopeGenerator : IIncrementalGenerator
             null);
     }
 
-    // same issue as with properties
+    // TODO: same issue as with properties
     private static ScopeMemberInfo? AnalyzeMethod(IMethodSymbol method, INamedTypeSymbol targetType, string targetMemberName, AccessKind accessKind)
     {
         var targetMethod = targetType.GetMembers(targetMemberName).OfType<IMethodSymbol>().FirstOrDefault();

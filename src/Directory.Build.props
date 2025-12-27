@@ -31,6 +31,7 @@
     <IsPackable>true</IsPackable>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+      <NoWarn>$(NoWarn);CS1591;NU5128</NoWarn>
 
     <!-- Package validation: https://learn.microsoft.com/en-us/dotnet/fundamentals/package-validation/overview -->
     <EnablePackageValidation>true</EnablePackageValidation>
