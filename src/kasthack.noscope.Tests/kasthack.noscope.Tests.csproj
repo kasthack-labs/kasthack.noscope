@@ -1,29 +1,29 @@
 <Project Sdk="Microsoft.NET.Sdk">
-	<PropertyGroup>
-		<TargetFrameworks>net10.0</TargetFrameworks>
-		<IsPackable>false</IsPackable>
-		<IsTestProject>true</IsTestProject>
-		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-	</PropertyGroup>
-	<ItemGroup>
-		<PackageReference Include="Microsoft.NET.Test.Sdk" />
-		<PackageReference Include="xunit" />
-		<PackageReference Include="xunit.runner.visualstudio">
-			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-			<PrivateAssets>all</PrivateAssets>
-		</PackageReference>
-		<PackageReference Include="coverlet.collector">
-			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-			<PrivateAssets>all</PrivateAssets>
-		</PackageReference>
-	</ItemGroup>
-	<ItemGroup>
-		<ProjectReference Include="..\kasthack.noscope.Attributes\kasthack.noscope.Attributes.csproj" />
-		<!-- Source generator temporarily disabled, using manual scope implementations for testing -->
-		<!-- 
-    <ProjectReference Include="..\kasthack.noscope.SourceGenerator\kasthack.noscope.SourceGenerator.csproj" 
-                      OutputItemType="Analyzer" 
-                      ReferenceOutputAssembly="false" />
-    -->
-	</ItemGroup>
+    <PropertyGroup>
+        <TargetFrameworks>net10.0</TargetFrameworks>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>true</IsTestProject>
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" />
+        <PackageReference Include="xunit" />
+        <PackageReference Include="xunit.runner.visualstudio">
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+        <PackageReference Include="coverlet.collector">
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\kasthack.noscope.Infra\kasthack.noscope.Infra.csproj" />
+        <!-- Source generator temporarily disabled, using manual scope implementations for testing -->
+        <!-- 
+        <ProjectReference Include="..\kasthack.noscope.SourceGenerator\kasthack.noscope.SourceGenerator.csproj" 
+        OutputItemType="Analyzer" 
+        ReferenceOutputAssembly="false" />
+        -->
+    </ItemGroup>
 </Project>

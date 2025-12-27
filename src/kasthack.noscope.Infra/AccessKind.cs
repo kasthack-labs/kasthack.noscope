@@ -1,4 +1,4 @@
-namespace kasthack.noscope;
+namespace kasthack.noscope.Infra;
 
 /// <summary>
 /// Specifies the kind of accessor to use for a scope member.

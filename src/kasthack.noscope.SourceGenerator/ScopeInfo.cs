@@ -3,6 +3,8 @@ namespace kasthack.noscope.SourceGenerator;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 
+using kasthack.noscope.Infra;
+
 using Microsoft.CodeAnalysis;
 
 /// <summary>
@@ -44,15 +46,4 @@ internal enum MemberKind
     Property,
     Method,
     Event,
-}
-
-/// <summary>
-/// Mirror of the AccessKind enum from attributes.
-/// </summary>
-internal enum AccessKind
-{
-    Auto = 0,
-    Direct = 1,
-    GeneratedAccessor = 2,
-    ReflectionAccessor = 3,
 }

@@ -4,9 +4,9 @@
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />
   </Folder>
-  <Project Path="kasthack.noscope.Attributes/kasthack.noscope.Attributes.csproj" />
-  <Project Path="kasthack.noscope.SourceGenerator/kasthack.noscope.SourceGenerator.csproj" />
   <Project Path="kasthack.noscope.Analyzers/kasthack.noscope.Analyzers.csproj" />
-  <Project Path="kasthack.noscope/kasthack.noscope.csproj" />
+  <Project Path="kasthack.noscope.Infra/kasthack.noscope.Infra.csproj" />
+  <Project Path="kasthack.noscope.SourceGenerator/kasthack.noscope.SourceGenerator.csproj" />
   <Project Path="kasthack.noscope.Tests/kasthack.noscope.Tests.csproj" />
+  <Project Path="kasthack.noscope/kasthack.noscope.csproj" />
 </Solution>

@@ -6,6 +6,8 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 
+using kasthack.noscope.Infra;
+
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -17,31 +19,34 @@ using Microsoft.CodeAnalysis.Text;
 [Generator]
 public class NoScopeGenerator : IIncrementalGenerator
 {
+    /*
+     * Flow:
+     * - Generator registers a source output that
+     *  - monitors [Scope] attributes on interface declarations
+     *  - emits ScopeInfo collections
+     *  - generates sources from the emitted ScopeInfos
+     */
+    private static readonly string ScopeMemberAttributeName = nameof(ScopeMemberAttribute);
+
     /// <inheritdoc/>
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var scopeInterfaces = context.SyntaxProvider
-            .ForAttributeWithMetadataName(
-                "kasthack.noscope.ScopeAttribute",
-                predicate: static (node, _) => node is InterfaceDeclarationSyntax,
-                transform: static (ctx, _) => GetScopeInfo(ctx))
-            .Where(static info => info is not null)
-            .Select(static (info, _) => info!);
+        var scopes = new[] { typeof(ScopeAttribute), typeof(ScopeAttribute<>) }
+            .Select(type => type.FullName)
+            .Select(typeName => context.SyntaxProvider
+                .ForAttributeWithMetadataName(
+                    typeName,
+                    predicate: static (node, _) => node is InterfaceDeclarationSyntax,
+                    transform: static (ctx, _) => GetScopeInfo(ctx))
+                .Where(static info => info is not null)
+                .Select(static (info, _) => info!)
+                .Collect())
+            .ToArray();
 
-        var genericScopeInterfaces = context.SyntaxProvider
-            .ForAttributeWithMetadataName(
-                "kasthack.noscope.ScopeAttribute`1",
-                predicate: static (node, _) => node is InterfaceDeclarationSyntax,
-                transform: static (ctx, _) => GetScopeInfo(ctx))
-            .Where(static info => info is not null)
-            .Select(static (info, _) => info!);
-
-        var allScopes = scopeInterfaces.Collect().Combine(genericScopeInterfaces.Collect());
-
+        var allScopes = scopes[0].Combine(scopes[1]);
         context.RegisterSourceOutput(allScopes, static (spc, scopes) =>
         {
-            var combined = scopes.Left.AddRange(scopes.Right);
-            foreach (var scopeInfo in combined)
+            foreach (var scopeInfo in scopes.Left.Concat(scopes.Right))
             {
                 GenerateScopeClass(spc, scopeInfo);
             }
@@ -56,14 +61,39 @@ public class NoScopeGenerator : IIncrementalGenerator
             return null;
         }
 
+        var targetType = GetTargetType(context);
+        if (targetType is null)
+        {
+            return null;
+        }
+
+        var members = interfaceSymbol.GetMembers()
+            .Select(member => AnalyzeMember(member, targetType))
+            .Where(a => a != null)
+            .Select(a => a!)
+            .ToList();
+
+        return new ScopeInfo(
+            Namespace: interfaceSymbol.ContainingNamespace.ToDisplayString(),
+            InterfaceName: interfaceSymbol.Name,
+            TargetTypeName: targetType.ToDisplayString(),
+            TargetType: targetType,
+            IsTargetPartial: IsTargetPartial(targetType),
+            Members: members);
+    }
+
+    private static INamedTypeSymbol? GetTargetType(GeneratorAttributeSyntaxContext context)
+    {
+        INamedTypeSymbol? targetType = null;
+
         var attribute = context.Attributes.FirstOrDefault();
         if (attribute is null)
         {
             return null;
         }
 
-        INamedTypeSymbol? targetType = null;
-
+        // we can't extract attribute data from source in a reflection-like way, so we rely on type-parameters or constructor arguments
+        // typeof(...) constructor arguments are there for back-compatibility with older C# versions
         if (attribute.AttributeClass?.IsGenericType == true)
         {
             targetType = attribute.AttributeClass.TypeArguments.FirstOrDefault() as INamedTypeSymbol;
@@ -73,53 +103,33 @@ public class NoScopeGenerator : IIncrementalGenerator
             targetType = type;
         }
 
-        if (targetType is null)
-        {
-            return null;
-        }
-
-        var members = new List<ScopeMemberInfo>();
-
-        foreach (var member in interfaceSymbol.GetMembers())
-        {
-            var memberInfo = AnalyzeMember(member, targetType);
-            if (memberInfo is not null)
-            {
-                members.Add(memberInfo);
-            }
-        }
-
-        return new ScopeInfo(
-            interfaceSymbol.ContainingNamespace.ToDisplayString(),
-            interfaceSymbol.Name,
-            targetType.ToDisplayString(),
-            targetType,
-            IsTargetPartial(context, targetType),
-            members);
+        return targetType;
     }
 
-    private static bool IsTargetPartial(GeneratorAttributeSyntaxContext context, INamedTypeSymbol targetType)
-    {
-        foreach (var syntaxRef in targetType.DeclaringSyntaxReferences)
-        {
-            var syntax = syntaxRef.GetSyntax();
-            if (syntax is TypeDeclarationSyntax typeDecl && typeDecl.Modifiers.Any(SyntaxKind.PartialKeyword))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    private static bool IsTargetPartial(INamedTypeSymbol targetType) =>
+        targetType.DeclaringSyntaxReferences
+        .Any(syntaxRef => syntaxRef.GetSyntax() is TypeDeclarationSyntax typeDecl
+            && typeDecl.Modifiers.Any(SyntaxKind.PartialKeyword));
 
     private static ScopeMemberInfo? AnalyzeMember(ISymbol member, INamedTypeSymbol targetType)
     {
-        var scopeMemberAttr = member.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == "ScopeMemberAttribute");
+        var (accessKind, targetMemberName) = GetScopeMemberOptions(member);
 
+        return member switch
+        {
+            IPropertySymbol prop => AnalyzeProperty(prop, targetType, targetMemberName, accessKind),
+            IMethodSymbol method when !(method.MethodKind is MethodKind.PropertyGet or MethodKind.PropertySet) => AnalyzeMethod(method, targetType, targetMemberName, accessKind),
+            IEventSymbol evt => AnalyzeEvent(evt, targetType, targetMemberName, accessKind),
+            _ => null,
+        };
+    }
+
+    private static (AccessKind AccessKind, string TargetMemberName) GetScopeMemberOptions(ISymbol member)
+    {
         string? explicitName = null;
         var accessKind = AccessKind.Auto;
-
+        var scopeMemberAttr = member.GetAttributes()
+            .FirstOrDefault(a => a.AttributeClass?.Name == ScopeMemberAttributeName);
         if (scopeMemberAttr is not null)
         {
             foreach (var namedArg in scopeMemberAttr.NamedArguments)
@@ -135,24 +145,28 @@ public class NoScopeGenerator : IIncrementalGenerator
                 }
             }
         }
-
-        var targetMemberName = explicitName ?? member.Name;
-
-        return member switch
-        {
-            IPropertySymbol prop => AnalyzeProperty(prop, targetType, targetMemberName, accessKind),
-            IMethodSymbol method when !method.IsPropertyAccessor() => AnalyzeMethod(method, targetType, targetMemberName, accessKind),
-            IEventSymbol evt => AnalyzeEvent(evt, targetType, targetMemberName, accessKind),
-            _ => null,
-        };
+        return (accessKind, explicitName ?? member.Name);
     }
 
+    // TODO: bug? doesn't account for default method implementations
+    // TODO: poor design. resolves targets too early which can be an performance issue
+    // TODO: check how it interacts with binary dependencies
     private static ScopeMemberInfo? AnalyzeProperty(IPropertySymbol prop, INamedTypeSymbol targetType, string targetMemberName, AccessKind accessKind)
     {
         var targetMember = FindMember(targetType, targetMemberName);
-        if (targetMember is null)
+        if (targetMemberName is null)
         {
-            return new ScopeMemberInfo(MemberKind.Property, prop.Name, prop.Type.ToDisplayString(), targetMemberName, accessKind, prop.GetMethod is not null, prop.SetMethod is not null, ImmutableArray<ParameterInfo>.Empty, false, $"Member '{targetMemberName}' not found on target type");
+            return new ScopeMemberInfo(
+                MemberKind.Property,
+                prop.Name,
+                prop.Type.ToDisplayString(),
+                targetMemberName,
+                accessKind,
+                prop.GetMethod is not null,
+                prop.SetMethod is not null,
+                ImmutableArray<ParameterInfo>.Empty,
+                false,
+                $"Member '{targetMemberName}' not found on target type");
         }
 
         var (memberType, canRead, canWrite) = targetMember switch
@@ -182,12 +196,23 @@ public class NoScopeGenerator : IIncrementalGenerator
             null);
     }
 
+    // same issue as with properties
     private static ScopeMemberInfo? AnalyzeMethod(IMethodSymbol method, INamedTypeSymbol targetType, string targetMemberName, AccessKind accessKind)
     {
         var targetMethod = targetType.GetMembers(targetMemberName).OfType<IMethodSymbol>().FirstOrDefault();
         if (targetMethod is null)
         {
-            return new ScopeMemberInfo(MemberKind.Method, method.Name, method.ReturnType.ToDisplayString(), targetMemberName, accessKind, false, false, GetParameters(method), false, $"Method '{targetMemberName}' not found on target type");
+            return new ScopeMemberInfo(
+                Kind: MemberKind.Method,
+                Name: method.Name,
+                TypeName: method.ReturnType.ToDisplayString(),
+                TargetMemberName: targetMemberName,
+                RequestedAccessKind: accessKind,
+                HasGetter: false,
+                HasSetter: false,
+                Parameters: GetParameters(method),
+                IsPublic: false,
+                Error: $"Method '{targetMemberName}' not found on target type");
         }
 
         var isPublic = targetMethod.DeclaredAccessibility == Accessibility.Public;
@@ -205,6 +230,7 @@ public class NoScopeGenerator : IIncrementalGenerator
             null);
     }
 
+    // TODO: same as above
     private static ScopeMemberInfo? AnalyzeEvent(IEventSymbol evt, INamedTypeSymbol targetType, string targetMemberName, AccessKind accessKind)
     {
         var targetEvent = targetType.GetMembers(targetMemberName).OfType<IEventSymbol>().FirstOrDefault();
@@ -258,6 +284,7 @@ public class NoScopeGenerator : IIncrementalGenerator
         return null;
     }
 
+    // TODO: likely broken. Multiple scopes will generate duplicate accessors
     private static void GenerateScopeClass(SourceProductionContext context, ScopeInfo scopeInfo)
     {
         var sb = new StringBuilder();

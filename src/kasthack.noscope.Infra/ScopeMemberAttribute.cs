@@ -1,4 +1,4 @@
-namespace kasthack.noscope;
+namespace kasthack.noscope.Infra;
 
 using System;
 

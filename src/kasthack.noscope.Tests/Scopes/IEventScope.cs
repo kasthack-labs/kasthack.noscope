@@ -2,6 +2,7 @@ namespace kasthack.noscope.Tests.Scopes;
 
 using System;
 
+using kasthack.noscope.Infra;
 using kasthack.noscope.Tests.TestTypes;
 
 /// <summary>

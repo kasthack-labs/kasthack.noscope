@@ -1,5 +1,6 @@
 namespace kasthack.noscope.Tests.Scopes;
 
+using kasthack.noscope.Infra;
 using kasthack.noscope.Tests.TestTypes;
 
 /// <summary>
