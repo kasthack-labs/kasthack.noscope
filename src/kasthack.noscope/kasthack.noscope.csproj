@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <Description>NoScope - Source generator library for building scoped facades to help with extending and refactoring tightly coupled types</Description>
+
+        <!-- Prevents a library DLL from being built for this project -->
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <!-- Prevents packaging content files if any are present -->
+        <IncludeContentInPack>false</IncludeContentInPack>
+        <!-- Suppresses a common warning (NU5128) when a package has no files but has dependencies -->
+        <NoWarn>$(NoWarn);NU5128</NoWarn>
+
+
+        <!-- This is a meta-package that pulls in all components --><!--
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
+        <NoPackageAnalysis>true</NoPackageAnalysis>-->
+        <!--<NoBuild>true</NoBuild>-->
+
+        <!-- Package metadata -->
+        <PackageId>kasthack.noscope</PackageId>
+        <PackageTags>source-generator;roslyn;refactoring;facade;scope;dependency-injection</PackageTags>
+    </PropertyGroup>
+
+    <!-- Reference to Infra (runtime dependency) -->
+    <ItemGroup>
+        <ProjectReference Include="..\kasthack.noscope.Infra\kasthack.noscope.Infra.csproj" />
+    </ItemGroup>
+
+    <!-- Reference to SourceGenerator (development/build-time only) -->
+    <ItemGroup>
+        <ProjectReference Include="..\kasthack.noscope.SourceGenerator\kasthack.noscope.SourceGenerator.csproj" PrivateAssets="all" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
+    </ItemGroup>
+
+    <!-- Reference to Analyzers (development/build-time only) -->
+    <ItemGroup>
+        <ProjectReference Include="..\kasthack.noscope.Analyzers\kasthack.noscope.Analyzers.csproj" PrivateAssets="all" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
+    </ItemGroup>
+
+</Project>

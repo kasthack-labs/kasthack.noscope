@@ -1,0 +1,77 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <Description>Source generator for kasthack.noscope scope facade library</Description>
+        <IsRoslynComponent>true</IsRoslynComponent>
+        <DevelopmentDependency>true</DevelopmentDependency>
+        <!--<SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>-->
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
+        <PackageReference Include="PolySharp" PrivateAssets="all" />
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\kasthack.noscope.Infra\kasthack.noscope.Infra.csproj"  PrivateAssets="All"
+                      IncludeInPackage="true" >
+            <!--ReferenceOutputAssembly="true"-->
+            <!--<PrivateAssets>All</PrivateAssets>-->
+        </ProjectReference>
+    </ItemGroup>
+
+
+    <!--<PropertyGroup>
+        <GetTargetPathDependsOn>$(GetTargetPathDependsOn);GetDependencyTargetPaths</GetTargetPathDependsOn>
+    </PropertyGroup>-->
+
+    <!--<Target Name="GetDependencyTargetPaths">
+        <ItemGroup>
+            <TargetPathWithTargetPlatformMoniker Include="@(ReferenceCopyLocalPaths)"
+                                                 IncludeRuntimeDependency="false" />
+        </ItemGroup>
+    </Target>-->
+    <!--<PropertyGroup>
+        <GetTargetPathDependsOn>$(GetTargetPathDependsOn);GetDependencyTargetPaths</GetTargetPathDependsOn>
+    </PropertyGroup>
+    <Target Name="GetDependencyTargetPaths">
+        <ItemGroup>
+            <TargetPathWithTargetPlatformMoniker Include="$(OutputPath)\kasthack.noscope.Infra.dll" IncludeRuntimeDependency="false" />
+        </ItemGroup>
+    </Target>-->
+
+    <!-- 👇 Add a new target that runs before the task that lists all the files to include in the NuGet package.
+          This task must run after the packages resolution target -->
+    <!--<Target Name="AddNuGetDlls" BeforeTargets="_GetPackageFiles">
+        --><!-- Merge the collection of PackageReference and Assemblies using the NuGetPackageId key.
+           This produces a new list containing the DLL path and the "IncludeInPackage" metadata--><!--
+        <JoinItems Left="@(ResolvedCompileFileDefinitions)" LeftKey="NuGetPackageId" LeftMetadata="*"
+                   Right="@(PackageReference)" RightKey="" RightMetadata="*"
+                   ItemSpecToUse="Left">
+            <Output TaskParameter="JoinResult" ItemName="_PackagesToPack" />
+        </JoinItems>
+
+        <ItemGroup>
+            --><!-- Remove NETStandard DLLs --><!--
+            <_PackagesToPack Remove="@(_PackagesToPack)" Condition="%(NuGetPackageId) == 'NETStandard.Library'" />
+            <_PackagesToPack Remove="@(_PackagesToPack)" Condition="%(_PackagesToPack.IncludeInPackage) != 'true'" />
+        </ItemGroup>
+
+        <Message Importance="High" Text="Adding DLLs from the following packages: @(_PackagesToPack->'%(NuGetPackageId)')" />
+
+        <ItemGroup>
+            --><!-- Update the collection of items to pack with the DLLs from the NuGet packages --><!--
+            <None Include="@(_PackagesToPack)"
+                  Pack="true"
+                  PackagePath="analyzers/dotnet/cs"
+                  Visible="false" />
+
+            --><!-- Add the DLL produced by the current project to the NuGet package --><!--
+            <None Include="$(OutputPath)\$(AssemblyName).dll"
+                  Pack="true"
+                  PackagePath="analyzers/dotnet/cs"
+                  Visible="false" />
+        </ItemGroup>
+    </Target>-->
+</Project>

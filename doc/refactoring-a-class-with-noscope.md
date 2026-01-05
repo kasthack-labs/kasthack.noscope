@@ -7,7 +7,7 @@ Let's say, you have a spaghetti class:
 ```csharp
 class SpaghettiCart
 {
-    
+
     private IList<Item> Items {get;set;} = new List<Item>();
 
     public decimal TaxAmount => Items
@@ -32,17 +32,18 @@ class SpaghettiCart
     }
 }
 ```
- 
+
 You can split it into separate types
 
 ```csharp
 
 
 // extract cart management
-interface ICartManagementScope : IFacade<SpaghettiOrder>
+[Scope(typeof(SpaghettiCart))]
+partial interface ICartManagementScope
 {
     // we expose mutable IList as is
-    IList<Item> Items {get;set;} 
+    IList<Item> Items {get;set;}
 }
 class CartManagementService(ICartManagementScope scope)
 {
@@ -52,7 +53,8 @@ class CartManagementService(ICartManagementScope scope)
 }
 
 // extract descriptions
-interface ICartDescriptionScope : IFacade<SpaghettiOrder>
+[Scope(typeof(SpaghettiCart))]
+partial interface ICartDescriptionScope
 {
     decimal TotalAmount {get;}
     decimal TaxAmount {get;}
@@ -73,10 +75,11 @@ class CartDescriptionService
     }
 }
 
-interface IOrderTaxCalculatorScope : IFacade<SpaghettiOrder>
+[Scope(typeof(SpaghettiCart))]
+partial interface IOrderTaxCalculatorScope
 {
-    [FacadeMember(Name = "Items")]
-    protected IList<Item> _items {get;} 
+    [ScopeMember(Name = "Items")]
+    protected IList<Item> _items {get;}
 
     // expose a read-only view for calculations
     IReadOnlyList<Item> Items => new ReadOnlyList<Item>(_items);
@@ -90,7 +93,7 @@ class TaxCalculator(IOrderTaxCalculatorScope scope)
 class SpaghettiCart(
     CartManagementServiceFactory cartManagementServiceFactory,
     TaxCalculatorFactory taxCalculatorFactory,
-    CartDescriptionService cartDescriptionService 
+    CartDescriptionService cartDescriptionService
 )
 {
     private IList<Item> Items {get;set;} = new List<Item>();
