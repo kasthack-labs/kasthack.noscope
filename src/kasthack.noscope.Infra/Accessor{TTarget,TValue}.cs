@@ -19,43 +19,23 @@ public class Accessor<TTarget, TValue>
     /// </summary>
     /// <param name="getter">The getter function.</param>
     /// <param name="setter">The setter action.</param>
-    public Accessor(Func<TTarget, TValue>? getter, Action<TTarget, TValue>? setter)
-    {
-        this._getter = getter;
-        this._setter = setter;
-    }
+    public Accessor(Func<TTarget, TValue>? getter, Action<TTarget, TValue>? setter) => (_getter, _setter) = (getter, setter);
 
-    public bool HasGet => this._getter != null;
+    public bool HasGet => _getter != null;
 
-    public bool HasSet => this._setter != null;
+    public bool HasSet => _setter != null;
 
     /// <summary>
     /// Gets the value from the target.
     /// </summary>
     /// <param name="target">The target object.</param>
     /// <returns>The member value.</returns>
-    public TValue Get(TTarget target)
-    {
-        if (this._getter == null)
-        {
-            throw new InvalidOperationException("No getter available for this accessor.");
-        }
-
-        return this._getter(target);
-    }
+    public TValue Get(TTarget target) => (_getter ?? throw new InvalidOperationException("No getter available for this accessor."))(target);
 
     /// <summary>
     /// Sets the value on the target.
     /// </summary>
     /// <param name="target">The target object.</param>
     /// <param name="value">The value to set.</param>
-    public void Set(TTarget target, TValue value)
-    {
-        if (this._setter == null)
-        {
-            throw new InvalidOperationException("No setter available for this accessor.");
-        }
-
-        this._setter(target, value);
-    }
+    public void Set(TTarget target, TValue value) => (_setter ?? throw new InvalidOperationException("No setter available for this accessor."))(target, value);
 }

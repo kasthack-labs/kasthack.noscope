@@ -26,7 +26,39 @@ public class NoScopeGenerator : IIncrementalGenerator
      *  - emits ScopeInfo collections
      *  - generates sources from the emitted ScopeInfos
      */
-    private static readonly string ScopeMemberAttributeName = nameof(ScopeMemberAttribute);
+    private const string _scopeMemberAttributeName = nameof(ScopeMemberAttribute);
+
+    /// <summary>
+    /// Equality comparer for ScopeMemberInfo that compares by target member name.
+    /// </summary>
+    private sealed class ScopeMemberInfoEqualityComparer : IEqualityComparer<ScopeMemberInfo>
+    {
+        public bool Equals(ScopeMemberInfo? x, ScopeMemberInfo? y)
+        {
+            if (ReferenceEquals(x, y))
+            {
+                return true;
+            }
+
+            if (x is null || y is null)
+            {
+                return false;
+            }
+
+            return x.TargetMemberName == y.TargetMemberName && x.Kind == y.Kind;
+        }
+
+        public int GetHashCode(ScopeMemberInfo obj)
+        {
+            unchecked
+            {
+                var hash = 17;
+                hash = (hash * 31) + (obj.TargetMemberName?.GetHashCode() ?? 0);
+                hash = (hash * 31) + obj.Kind.GetHashCode();
+                return hash;
+            }
+        }
+    }
 
     /// <inheritdoc/>
     public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -46,17 +78,37 @@ public class NoScopeGenerator : IIncrementalGenerator
         var allScopes = scopes[0].Combine(scopes[1]);
         context.RegisterSourceOutput(allScopes, static (spc, scopes) =>
         {
-            foreach (var scopeInfo in scopes.Left.Concat(scopes.Right))
+            var allScopeInfos = scopes.Left.Concat(scopes.Right).ToList();
+
+            // Generate scope classes
+            foreach (var scopeInfo in allScopeInfos)
             {
                 GenerateScopeClass(spc, scopeInfo);
+            }
+
+            // Generate accessors only once per target type
+            var targetTypeGroups = allScopeInfos
+                .Where(s => s.IsTargetPartial)
+                .GroupBy(s => s.TargetType, SymbolEqualityComparer.Default)
+                .ToList();
+
+            foreach (var group in targetTypeGroups)
+            {
+                var firstScope = group.First();
+                var allMembers = group.SelectMany(s => s.Members).Distinct(new ScopeMemberInfoEqualityComparer()).ToList();
+                var needsAccessors = allMembers.Where(m => DetermineAccessKind(m, true) == AccessKind.GeneratedAccessor).ToList();
+
+                if (needsAccessors.Count > 0)
+                {
+                    GenerateTargetAccessors(spc, firstScope, needsAccessors);
+                }
             }
         });
     }
 
     private static ScopeInfo? GetScopeInfo(GeneratorAttributeSyntaxContext context)
     {
-        var interfaceSymbol = context.TargetSymbol as INamedTypeSymbol;
-        if (interfaceSymbol is null)
+        if (context.TargetSymbol is not INamedTypeSymbol interfaceSymbol)
         {
             return null;
         }
@@ -117,10 +169,26 @@ public class NoScopeGenerator : IIncrementalGenerator
 
         return member switch
         {
-            IPropertySymbol prop => AnalyzeProperty(prop, targetType, targetMemberName, accessKind),
-            IMethodSymbol method when !(method.MethodKind is MethodKind.PropertyGet or MethodKind.PropertySet) => AnalyzeMethod(method, targetType, targetMemberName, accessKind),
-            IEventSymbol evt => AnalyzeEvent(evt, targetType, targetMemberName, accessKind),
+            IPropertySymbol prop when !prop.IsStatic && !HasDefaultImplementation(prop) => AnalyzeProperty(prop, targetType, targetMemberName, accessKind),
+            IMethodSymbol method when !(method.MethodKind is MethodKind.PropertyGet or MethodKind.PropertySet) && !method.IsStatic && !HasDefaultImplementation(method) => AnalyzeMethod(method, targetType, targetMemberName, accessKind),
+            IEventSymbol evt when !evt.IsStatic && !HasDefaultImplementation(evt) => AnalyzeEvent(evt, targetType, targetMemberName, accessKind),
             _ => null,
+        };
+    }
+
+    private static bool HasDefaultImplementation(ISymbol member)
+    {
+        // Check if the member has a default implementation (C# 8.0+ default interface members)
+        return member switch
+        {
+            IMethodSymbol method => !method.IsAbstract && method.ContainingType.TypeKind == TypeKind.Interface,
+            IPropertySymbol prop => (!prop.IsAbstract && prop.ContainingType.TypeKind == TypeKind.Interface) ||
+                                   (prop.GetMethod is not null && HasDefaultImplementation(prop.GetMethod)) ||
+                                   (prop.SetMethod is not null && HasDefaultImplementation(prop.SetMethod)),
+            IEventSymbol evt => (!evt.IsAbstract && evt.ContainingType.TypeKind == TypeKind.Interface) ||
+                               (evt.AddMethod is not null && HasDefaultImplementation(evt.AddMethod)) ||
+                               (evt.RemoveMethod is not null && HasDefaultImplementation(evt.RemoveMethod)),
+            _ => false,
         };
     }
 
@@ -129,7 +197,7 @@ public class NoScopeGenerator : IIncrementalGenerator
         string? explicitName = null;
         var accessKind = AccessKind.Auto;
         var scopeMemberAttr = member.GetAttributes()
-            .FirstOrDefault(a => a.AttributeClass?.Name == ScopeMemberAttributeName);
+            .FirstOrDefault(a => a.AttributeClass?.Name == _scopeMemberAttributeName);
         if (scopeMemberAttr is not null)
         {
             foreach (var namedArg in scopeMemberAttr.NamedArguments)
@@ -148,23 +216,22 @@ public class NoScopeGenerator : IIncrementalGenerator
         return (accessKind, explicitName ?? member.Name);
     }
 
-    // TODO: bug? doesn't account for default method implementations
-    // TODO: poor design. resolves targets too early which can be an performance issue
-    // TODO: check how it interacts with binary dependencies
+    // Analyzes a property member and resolves it against the target type.
+    // Resolution happens during transform phase to enable incremental generation.
     private static ScopeMemberInfo? AnalyzeProperty(IPropertySymbol prop, INamedTypeSymbol targetType, string targetMemberName, AccessKind accessKind)
     {
         var targetMember = FindMember(targetType, targetMemberName);
-        if (targetMemberName is null)
+        if (targetMember is null)
         {
             return new ScopeMemberInfo(
                 MemberKind.Property,
                 prop.Name,
                 prop.Type.ToDisplayString(),
-                null!,
+                targetMemberName,
                 accessKind,
                 prop.GetMethod is not null,
                 prop.SetMethod is not null,
-                ImmutableArray<ParameterInfo>.Empty,
+                [],
                 false,
                 $"Member '{targetMemberName}' not found on target type");
         }
@@ -178,10 +245,10 @@ public class NoScopeGenerator : IIncrementalGenerator
 
         if (memberType is null)
         {
-            return new ScopeMemberInfo(MemberKind.Property, prop.Name, prop.Type.ToDisplayString(), targetMemberName, accessKind, prop.GetMethod is not null, prop.SetMethod is not null, ImmutableArray<ParameterInfo>.Empty, false, $"Member '{targetMemberName}' is not a property or field");
+            return new ScopeMemberInfo(MemberKind.Property, prop.Name, prop.Type.ToDisplayString(), targetMemberName, accessKind, prop.GetMethod is not null, prop.SetMethod is not null, [], false, $"Member '{targetMemberName}' is not a property or field");
         }
 
-        var isPublic = targetMember?.DeclaredAccessibility == Accessibility.Public;
+        var isPublic = targetMember.DeclaredAccessibility == Accessibility.Public;
 
         return new ScopeMemberInfo(
             MemberKind.Property,
@@ -191,7 +258,7 @@ public class NoScopeGenerator : IIncrementalGenerator
             accessKind,
             prop.GetMethod is not null && canRead,
             prop.SetMethod is not null && canWrite,
-            ImmutableArray<ParameterInfo>.Empty,
+            [],
             isPublic,
             null);
     }
@@ -230,13 +297,12 @@ public class NoScopeGenerator : IIncrementalGenerator
             null);
     }
 
-    // TODO: same as above
     private static ScopeMemberInfo? AnalyzeEvent(IEventSymbol evt, INamedTypeSymbol targetType, string targetMemberName, AccessKind accessKind)
     {
         var targetEvent = targetType.GetMembers(targetMemberName).OfType<IEventSymbol>().FirstOrDefault();
         if (targetEvent is null)
         {
-            return new ScopeMemberInfo(MemberKind.Event, evt.Name, evt.Type.ToDisplayString(), targetMemberName, accessKind, false, false, ImmutableArray<ParameterInfo>.Empty, false, $"Event '{targetMemberName}' not found on target type");
+            return new ScopeMemberInfo(MemberKind.Event, evt.Name, evt.Type.ToDisplayString(), targetMemberName, accessKind, false, false, [], false, $"Event '{targetMemberName}' not found on target type");
         }
 
         var isPublic = targetEvent.DeclaredAccessibility == Accessibility.Public;
@@ -249,7 +315,7 @@ public class NoScopeGenerator : IIncrementalGenerator
             accessKind,
             false,
             false,
-            ImmutableArray<ParameterInfo>.Empty,
+            [],
             isPublic,
             null);
     }
@@ -284,12 +350,11 @@ public class NoScopeGenerator : IIncrementalGenerator
         return null;
     }
 
-    // TODO: likely broken. Multiple scopes will generate duplicate accessors
     private static void GenerateScopeClass(SourceProductionContext context, ScopeInfo scopeInfo)
     {
         var sb = new StringBuilder();
         var className = scopeInfo.InterfaceName.StartsWith("I", StringComparison.Ordinal)
-            ? scopeInfo.InterfaceName.Substring(1)
+            ? scopeInfo.InterfaceName[1..]
             : scopeInfo.InterfaceName + "Impl";
 
         sb.AppendLine("// <auto-generated/>");
@@ -302,26 +367,29 @@ public class NoScopeGenerator : IIncrementalGenerator
             sb.AppendLine();
         }
 
-        sb.AppendLine($"/// <summary>");
-        sb.AppendLine($"/// Generated scope class for <see cref=\"{scopeInfo.InterfaceName}\"/>.");
-        sb.AppendLine($"/// </summary>");
-        sb.AppendLine($"public partial class {className} : {scopeInfo.InterfaceName}");
-        sb.AppendLine("{");
-        sb.AppendLine($"    private readonly {scopeInfo.TargetTypeName} _target;");
-        sb.AppendLine();
-        sb.AppendLine($"    /// <summary>");
-        sb.AppendLine($"    /// Initializes a new instance of the <see cref=\"{className}\"/> class.");
-        sb.AppendLine($"    /// </summary>");
-        sb.AppendLine($"    /// <param name=\"target\">The target object to wrap.</param>");
-        sb.AppendLine($"    public {className}({scopeInfo.TargetTypeName} target)");
-        sb.AppendLine("    {");
-        sb.AppendLine("        _target = target;");
-        sb.AppendLine("    }");
-        sb.AppendLine();
-        sb.AppendLine($"    /// <summary>");
-        sb.AppendLine($"    /// Gets the underlying target object.");
-        sb.AppendLine($"    /// </summary>");
-        sb.AppendLine($"    public virtual {scopeInfo.TargetTypeName} Target => _target;");
+        sb.Append($$$"""
+            /// <summary>
+            /// Generated scope class for <see cref="{{{scopeInfo.InterfaceName}}}"/>.
+            /// </summary>
+            public partial class {{{className}}} : {{{scopeInfo.InterfaceName}}}
+            {
+                private readonly {{{scopeInfo.TargetTypeName}}} _target;
+
+                /// <summary>
+                /// Initializes a new instance of the <see cref="{{{className}}}"/> class.
+                /// </summary>
+                /// <param name="target">The target object to wrap.</param>
+                public {{{className}}}({{{scopeInfo.TargetTypeName}}} target)
+                {
+                    _target = target;
+                }
+
+                /// <summary>
+                /// Gets the underlying target object.
+                /// </summary>
+                public virtual {{{scopeInfo.TargetTypeName}}} Target => _target;
+
+            """);
 
         var needsAccessors = new List<ScopeMemberInfo>();
 
@@ -369,11 +437,6 @@ public class NoScopeGenerator : IIncrementalGenerator
         sb.AppendLine("}");
 
         context.AddSource($"{className}.g.cs", SourceText.From(sb.ToString(), Encoding.UTF8));
-
-        if (scopeInfo.IsTargetPartial && needsAccessors.Any(m => DetermineAccessKind(m, true) == AccessKind.GeneratedAccessor))
-        {
-            GenerateTargetAccessors(context, scopeInfo, needsAccessors);
-        }
     }
 
     private static AccessKind DetermineAccessKind(ScopeMemberInfo member, bool isTargetPartial)
@@ -396,78 +459,47 @@ public class NoScopeGenerator : IIncrementalGenerator
         return AccessKind.ReflectionAccessor;
     }
 
-    private static void GenerateProperty(StringBuilder sb, ScopeMemberInfo member, AccessKind accessKind, ScopeInfo scopeInfo)
-    {
-        sb.AppendLine();
-        sb.AppendLine($"    /// <inheritdoc/>");
-        sb.Append($"    public {member.TypeName} {member.Name}");
-        sb.AppendLine();
-        sb.AppendLine("    {");
-
-        if (member.HasGetter)
-        {
-            switch (accessKind)
+    private static void GenerateProperty(StringBuilder sb, ScopeMemberInfo member, AccessKind accessKind, ScopeInfo scopeInfo) => sb.AppendLine($$"""
+            /// <inheritdoc/>
+            public {{member.TypeName}} {{member.Name}}
             {
-                case AccessKind.Direct:
-                    sb.AppendLine($"        get => Target.{member.TargetMemberName};");
-                    break;
-                case AccessKind.GeneratedAccessor:
-                    sb.AppendLine($"        get => {scopeInfo.TargetTypeName}.NoScopeAccessors.{GetAccessorName(member)}.Get(Target);");
-                    break;
-                case AccessKind.ReflectionAccessor:
-                    sb.AppendLine($"        get => {GetAccessorFieldName(member)}.Get(Target);");
-                    break;
-            }
-        }
+                {{(member.HasGetter ? accessKind switch
+                {
+                    AccessKind.Direct => $"get => Target.{member.TargetMemberName};",
+                    AccessKind.GeneratedAccessor => $"get => {scopeInfo.TargetTypeName}.NoScopeAccessors.{GetAccessorName(member)}.Get(Target);",
+                    AccessKind.ReflectionAccessor => $"get => {GetAccessorFieldName(member)}.Get(Target);",
+                    _ => string.Empty,
+                } : string.Empty)}}
 
-        if (member.HasSetter)
-        {
-            switch (accessKind)
-            {
-                case AccessKind.Direct:
-                    sb.AppendLine($"        set => Target.{member.TargetMemberName} = value;");
-                    break;
-                case AccessKind.GeneratedAccessor:
-                    sb.AppendLine($"        set => {scopeInfo.TargetTypeName}.NoScopeAccessors.{GetAccessorName(member)}.Set(Target, value);");
-                    break;
-                case AccessKind.ReflectionAccessor:
-                    sb.AppendLine($"        set => {GetAccessorFieldName(member)}.Set(Target, value);");
-                    break;
+                {{(member.HasSetter ? accessKind switch
+                {
+                    AccessKind.Direct => $"set => Target.{member.TargetMemberName} = value;",
+                    AccessKind.GeneratedAccessor => $"set => {scopeInfo.TargetTypeName}.NoScopeAccessors.{GetAccessorName(member)}.Set(Target, value);",
+                    AccessKind.ReflectionAccessor => $"set => {GetAccessorFieldName(member)}.Set(Target, value);",
+                    _ => string.Empty,
+                } : string.Empty)}}
             }
-        }
-
-        sb.AppendLine("    }");
-    }
+        """);
 
     private static void GenerateMethod(StringBuilder sb, ScopeMemberInfo member, AccessKind accessKind)
     {
-        sb.AppendLine();
-        sb.AppendLine($"    /// <inheritdoc/>");
 
         var parameters = string.Join(", ", member.Parameters.Select(p => FormatParameter(p)));
-        var arguments = string.Join(", ", member.Parameters.Select(p => FormatArgument(p)));
 
-        var returnType = member.TypeName;
-        var isVoid = returnType == "void";
 
-        sb.Append($"    public {returnType} {member.Name}({parameters})");
+        sb.AppendLine();
+        sb.AppendLine("    /// <inheritdoc/>");
+        sb.Append($"    public {member.TypeName} {member.Name}({parameters})");
 
         if (accessKind == AccessKind.Direct)
         {
-            if (isVoid)
-            {
-                sb.AppendLine($" => Target.{member.TargetMemberName}({arguments});");
-            }
-            else
-            {
-                sb.AppendLine($" => Target.{member.TargetMemberName}({arguments});");
-            }
+            sb.AppendLine($" => Target.{member.TargetMemberName}({string.Join(", ", member.Parameters.Select(p => FormatArgument(p)))});");
         }
         else
         {
             sb.AppendLine();
             sb.AppendLine("    {");
-            sb.AppendLine($"        throw new System.NotSupportedException(\"Non-public methods require reflection-based invocation which is not yet implemented.\");");
+            sb.AppendLine("        throw new System.NotSupportedException(\"Non-public methods require reflection-based invocation which is not yet implemented.\");");
             sb.AppendLine("    }");
         }
     }
@@ -475,7 +507,7 @@ public class NoScopeGenerator : IIncrementalGenerator
     private static void GenerateEvent(StringBuilder sb, ScopeMemberInfo member, AccessKind accessKind)
     {
         sb.AppendLine();
-        sb.AppendLine($"    /// <inheritdoc/>");
+        sb.AppendLine("    /// <inheritdoc/>");
 
         if (accessKind == AccessKind.Direct)
         {
@@ -558,38 +590,27 @@ public class NoScopeGenerator : IIncrementalGenerator
         var name = member.TargetMemberName;
         if (name.StartsWith("_", StringComparison.Ordinal))
         {
-            name = name.Substring(1);
+            name = name[1..];
         }
 
-        return $"AccessorFor{char.ToUpperInvariant(name[0])}{name.Substring(1)}";
+        return $"AccessorFor{char.ToUpperInvariant(name[0])}{name[1..]}";
     }
 
-    private static string GetAccessorFieldName(ScopeMemberInfo member)
-    {
-        return $"_accessor_{member.Name}";
-    }
+    private static string GetAccessorFieldName(ScopeMemberInfo member) => $"_accessor_{member.Name}";
 
-    private static string FormatParameter(ParameterInfo param)
+    private static string FormatParameter(ParameterInfo param) => $"{param.RefKind switch
     {
-        var prefix = param.RefKind switch
-        {
-            RefKind.Ref => "ref ",
-            RefKind.Out => "out ",
-            RefKind.In => "in ",
-            _ => string.Empty,
-        };
-        return $"{prefix}{param.TypeName} {param.Name}";
-    }
+        RefKind.Ref => "ref ",
+        RefKind.Out => "out ",
+        RefKind.In => "in ",
+        _ => string.Empty,
+    }}{param.TypeName} {param.Name}";
 
-    private static string FormatArgument(ParameterInfo param)
+    private static string FormatArgument(ParameterInfo param) => $"{param.RefKind switch
     {
-        var prefix = param.RefKind switch
-        {
-            RefKind.Ref => "ref ",
-            RefKind.Out => "out ",
-            RefKind.In => "in ",
-            _ => string.Empty,
-        };
-        return $"{prefix}{param.Name}";
-    }
+        RefKind.Ref => "ref ",
+        RefKind.Out => "out ",
+        RefKind.In => "in ",
+        _ => string.Empty,
+    }}{param.Name}";
 }

@@ -19,10 +19,7 @@ public static class Accessor
     /// <returns>A new accessor instance.</returns>
     public static Accessor<TTarget, TValue> FromFunc<TTarget, TValue>(
         Func<TTarget, TValue>? get = null,
-        Action<TTarget, TValue>? set = null)
-    {
-        return new Accessor<TTarget, TValue>(get, set);
-    }
+        Action<TTarget, TValue>? set = null) => new(get, set);
 
     /// <summary>
     /// Creates a reflection-based accessor for a field.
